@@ -237,6 +237,8 @@
     <section id="view-music" class="hidden"></section>
     <!-- GERENCIAR -->
     <section id="view-manage" class="hidden"></section>
+    <!-- NÍVEL -->
+    <section id="view-level" class="hidden"></section>
   </main>
 
   <nav class="tabs">
@@ -244,7 +246,7 @@
     <button data-view="cards" onclick="go('cards')"><span class="ic">🃏</span>Flashcards</button>
     <button data-view="grammar" onclick="go('grammar')"><span class="ic">✏️</span>Gramática</button>
     <button data-view="chat" onclick="go('chat')"><span class="ic">💬</span>Conversa</button>
-    <button data-view="music" onclick="go('music')"><span class="ic">🎵</span>Música</button>
+    <button data-view="music" onclick="go('music')"><span class="ic">🎬</span>Mídia</button>
     <button data-view="manage" onclick="go('manage')"><span class="ic">⚙️</span>Gerenciar</button>
   </nav>
 </div>
@@ -257,7 +259,115 @@
    NIPI Línguas — núcleo de dados
    ========================================================= */
 const STORE_KEY = 'nipi_linguas_v1';
-const FLAGS = ['🇬🇧','🇪🇸','🇫🇷','🇮🇹','🇩🇪','🇧🇷','🇵🇹','🇯🇵','🇨🇳','🇷🇺','🌐'];
+const FLAGS = ['🇬🇧','🇪🇸','🇫🇷','🇮🇹','🇩🇪','🇧🇷','🇵🇹','🇯🇵','🇰🇷','🇨🇳','🇷🇺','🌐'];
+const PROVIDERS=[
+  {k:'netflix',n:'Netflix'},{k:'prime',n:'Prime Video'},{k:'disney',n:'Disney+'},
+  {k:'max',n:'Max'},{k:'appletv',n:'Apple TV+'},{k:'paramount',n:'Paramount+'},
+  {k:'crunchyroll',n:'Crunchyroll'},{k:'globoplay',n:'Globoplay'},{k:'viki',n:'Rakuten Viki'}
+];
+const COUNTRIES=[{k:'BR',n:'Brasil'},{k:'PT',n:'Portugal'},{k:'US',n:'Estados Unidos'}];
+const LANG_CODES={'inglês':'en','ingles':'en','espanhol':'es','francês':'fr','frances':'fr','italiano':'it','alemão':'de','alemao':'de','português':'pt','portugues':'pt','japonês':'ja','japones':'ja','coreano':'ko','chinês':'zh','chines':'zh','russo':'ru'};
+function langCode(l){return l.code||LANG_CODES[normWord(l.name)]||''}
+function provName(k){const p=PROVIDERS.find(x=>x.k===k);return p?p.n:k}
+function isJapaneseLang(l){return l&&(l.code==='ja'||/japon/.test(normWord(l.name)))}
+function isJapanese(){return isJapaneseLang(curLang())}
+function splitJp(front){const m=(front||'').match(/^(.*?)\s*\(([^)]*)\)\s*$/);return m?{base:m[1].trim(),romaji:m[2].trim()}:{base:(front||'').trim(),romaji:''}}
+function jpRender(front,reading){
+  const {base,romaji}=splitJp(front);
+  const mode=(DB.settings&&DB.settings.jpMode)||'romaji';
+  if(mode==='romaji')return esc(base)+(romaji?` <span style="opacity:.65;font-size:.85em">(${esc(romaji)})</span>`:'');
+  if(mode==='furigana'){
+    if(!/[\u4e00-\u9faf]/.test(base))return esc(base); // só kana: sem furigana
+    const rt=reading||romaji;
+    return rt?`<ruby>${esc(base)}<rt style="font-size:.55em;opacity:.85">${esc(rt)}</rt></ruby>`:esc(base);
+  }
+  return esc(base); // off / só kanji
+}
+function dispWord(o){return isJapanese()?jpRender(o.front,o.reading):esc(o.front)}
+function jpStripRomaji(s){return (s||'').replace(/\s*\(([a-z]+(?:\s*\/\s*[a-z]+)*)\)/g,'')}
+function jpText(s){const m=(DB.settings&&DB.settings.jpMode)||'romaji';return (isJapanese()&&m!=='romaji')?jpStripRomaji(s):s}
+function setJpMode(m){DB.settings.jpMode=m;save();
+  if(currentView==='cards')renderCards();
+  else if(currentView==='grammar')renderGrammar();
+  else if(currentView==='manage')renderManage();
+}
+
+/* =========================================================
+   CURRÍCULO POR NÍVEL — CEFR / JLPT / TOPIK
+   f=termo, b=tradução PT, r=leitura (japonês)
+   ========================================================= */
+const CURRICULUM={
+  en:{framework:'CEFR',levels:[
+    {id:'A1',label:'A1',desc:'Iniciante — frases básicas do dia a dia.',grammar:['verbo to be','presente simples','plural com -s'],core:[
+      {f:'hello',b:'olá'},{f:'water',b:'água'},{f:'house',b:'casa'},{f:'to eat',b:'comer'},{f:'big',b:'grande'},{f:'friend',b:'amigo'},{f:'day',b:'dia'},{f:'good',b:'bom'}]},
+    {id:'A2',label:'A2',desc:'Básico — situações rotineiras.',grammar:['passado simples','comparativos','going to (futuro)'],core:[
+      {f:'because',b:'porque'},{f:'sometimes',b:'às vezes'},{f:'weather',b:'tempo (clima)'},{f:'already',b:'já'},{f:'busy',b:'ocupado'},{f:'to travel',b:'viajar'},{f:'to remember',b:'lembrar'},{f:'cheap',b:'barato'}]},
+    {id:'B1',label:'B1',desc:'Intermediário — opiniões e experiências.',grammar:['present perfect','primeiro condicional','voz passiva básica'],core:[
+      {f:'although',b:'embora'},{f:'advice',b:'conselho'},{f:'to improve',b:'melhorar'},{f:'to manage',b:'conseguir / administrar'},{f:'environment',b:'meio ambiente'},{f:'available',b:'disponível'},{f:'however',b:'no entanto'},{f:'to deserve',b:'merecer'}]},
+    {id:'B2',label:'B2',desc:'Intermediário-alto — textos complexos.',grammar:['present perfect continuous','2º e 3º condicionais','discurso indireto'],core:[
+      {f:'nevertheless',b:'mesmo assim'},{f:'achievement',b:'conquista'},{f:'reluctant',b:'relutante'},{f:'to overcome',b:'superar'},{f:'thorough',b:'minucioso'},{f:'insight',b:'percepção'},{f:'regardless',b:'independentemente'},{f:'sustainable',b:'sustentável'}]},
+    {id:'C1',label:'C1',desc:'Avançado — fluência flexível.',grammar:['inversão enfática','cleft sentences','modais de dedução no passado'],core:[
+      {f:'nonetheless',b:'ainda assim'},{f:'intricate',b:'intrincado'},{f:'to discern',b:'discernir'},{f:'to advocate',b:'defender'},{f:'compelling',b:'convincente'},{f:'to mitigate',b:'mitigar'},{f:'prevalent',b:'predominante'},{f:'nuance',b:'nuance'}]},
+    {id:'C2',label:'C2',desc:'Domínio — quase nativo.',grammar:['estruturas idiomáticas avançadas','nuances de registro','elipse e ênfase'],core:[
+      {f:'ubiquitous',b:'onipresente'},{f:'ephemeral',b:'efêmero'},{f:'meticulous',b:'meticuloso'},{f:'paradigm',b:'paradigma'},{f:'to juxtapose',b:'justapor'},{f:'esoteric',b:'esotérico'},{f:'quintessential',b:'quintessencial'},{f:'candor',b:'franqueza'}]},
+  ]},
+  es:{framework:'CEFR / DELE',levels:[
+    {id:'A1',label:'A1',desc:'Iniciante — frases básicas.',grammar:['ser vs estar','presente regular','artigos e gênero'],core:[
+      {f:'hola',b:'olá'},{f:'agua',b:'água'},{f:'casa',b:'casa'},{f:'comer',b:'comer'},{f:'grande',b:'grande'},{f:'amigo',b:'amigo'},{f:'día',b:'dia'},{f:'bueno',b:'bom'}]},
+    {id:'A2',label:'A2',desc:'Básico — rotina.',grammar:['pretérito indefinido','pretérito imperfecto','comparativos'],core:[
+      {f:'porque',b:'porque'},{f:'a veces',b:'às vezes'},{f:'tiempo',b:'tempo (clima)'},{f:'ya',b:'já'},{f:'ocupado',b:'ocupado'},{f:'viajar',b:'viajar'},{f:'recordar',b:'lembrar'},{f:'barato',b:'barato'}]},
+    {id:'B1',label:'B1',desc:'Intermediário.',grammar:['subjuntivo presente','condicional','perífrasis verbais'],core:[
+      {f:'aunque',b:'embora'},{f:'consejo',b:'conselho'},{f:'mejorar',b:'melhorar'},{f:'lograr',b:'conseguir'},{f:'medio ambiente',b:'meio ambiente'},{f:'disponible',b:'disponível'},{f:'sin embargo',b:'no entanto'},{f:'merecer',b:'merecer'}]},
+    {id:'B2',label:'B2',desc:'Intermediário-alto.',grammar:['subjuntivo imperfecto','oraciones condicionales','voz passiva'],core:[
+      {f:'no obstante',b:'mesmo assim'},{f:'logro',b:'conquista'},{f:'reacio',b:'relutante'},{f:'superar',b:'superar'},{f:'minucioso',b:'minucioso'},{f:'percepción',b:'percepção'},{f:'sostenible',b:'sustentável'},{f:'ámbito',b:'âmbito'}]},
+    {id:'C1',label:'C1',desc:'Avançado.',grammar:['subjuntivo pluscuamperfecto','conectores del discurso','estilo indirecto'],core:[
+      {f:'discernir',b:'discernir'},{f:'abogar',b:'defender'},{f:'convincente',b:'convincente'},{f:'mitigar',b:'mitigar'},{f:'predominante',b:'predominante'},{f:'matiz',b:'nuance'},{f:'índole',b:'índole'},{f:'recurrir',b:'recorrer'}]},
+    {id:'C2',label:'C2',desc:'Domínio.',grammar:['matices de registro','modismos avançados','subordinadas complexas'],core:[
+      {f:'ubicuo',b:'onipresente'},{f:'efímero',b:'efêmero'},{f:'meticuloso',b:'meticuloso'},{f:'paradigma',b:'paradigma'},{f:'yuxtaponer',b:'justapor'},{f:'esotérico',b:'esotérico'},{f:'franqueza',b:'franqueza'},{f:'soslayar',b:'contornar / evitar'}]},
+  ]},
+  ja:{framework:'JLPT',levels:[
+    {id:'N5',label:'N5',desc:'Iniciante — base de kana e kanji simples.',grammar:['partículas は/が/を','です/ます','adjetivos い/な'],core:[
+      {f:'こんにちは',b:'olá',r:''},{f:'水',b:'água',r:'みず'},{f:'家',b:'casa',r:'いえ'},{f:'食べる',b:'comer',r:'たべる'},{f:'大きい',b:'grande',r:'おおきい'},{f:'友達',b:'amigo',r:'ともだち'},{f:'日',b:'dia',r:'ひ'},{f:'いい',b:'bom',r:''}]},
+    {id:'N4',label:'N4',desc:'Básico — rotina e forma て.',grammar:['forma て','forma plana (casual)','potencial 〜られる'],core:[
+      {f:'時々',b:'às vezes',r:'ときどき'},{f:'天気',b:'tempo (clima)',r:'てんき'},{f:'もう',b:'já',r:''},{f:'忙しい',b:'ocupado',r:'いそがしい'},{f:'旅行',b:'viagem',r:'りょこう'},{f:'覚える',b:'memorizar / lembrar',r:'おぼえる'},{f:'安い',b:'barato',r:'やすい'},{f:'説明',b:'explicação',r:'せつめい'}]},
+    {id:'N3',label:'N3',desc:'Intermediário.',grammar:['passiva 〜られる','causativo 〜させる','condicionais と/ば/たら/なら'],core:[
+      {f:'アドバイス',b:'conselho',r:''},{f:'改善',b:'melhoria',r:'かいぜん'},{f:'環境',b:'meio ambiente',r:'かんきょう'},{f:'可能',b:'possível',r:'かのう'},{f:'しかし',b:'porém',r:''},{f:'経験',b:'experiência',r:'けいけん'},{f:'必要',b:'necessário',r:'ひつよう'},{f:'準備',b:'preparação',r:'じゅんび'}]},
+    {id:'N2',label:'N2',desc:'Intermediário-alto.',grammar:['keigo (linguagem formal)','〜わけだ / 〜はずだ','expressões de causa e efeito'],core:[
+      {f:'達成',b:'realização / conquista',r:'たっせい'},{f:'克服',b:'superação',r:'こくふく'},{f:'詳しい',b:'detalhado',r:'くわしい'},{f:'影響',b:'influência',r:'えいきょう'},{f:'傾向',b:'tendência',r:'けいこう'},{f:'解決',b:'solução',r:'かいけつ'},{f:'状況',b:'situação',r:'じょうきょう'},{f:'判断',b:'julgamento',r:'はんだん'}]},
+    {id:'N1',label:'N1',desc:'Avançado — japonês formal/escrito.',grammar:['expressões formais escritas','nuances 〜ものの / 〜ながらも','estrutura de texto avançada'],core:[
+      {f:'洞察',b:'perspicácia',r:'どうさつ'},{f:'緩和',b:'atenuação',r:'かんわ'},{f:'普及',b:'difusão',r:'ふきゅう'},{f:'微妙',b:'sutil',r:'びみょう'},{f:'曖昧',b:'ambíguo',r:'あいまい'},{f:'顕著',b:'notável',r:'けんちょ'},{f:'率直',b:'franco',r:'そっちょく'},{f:'妥当',b:'apropriado',r:'だとう'}]},
+  ]},
+  ko:{framework:'TOPIK',levels:[
+    {id:'T1',label:'TOPIK 1',desc:'Iniciante — base do hangul.',grammar:['입니다/이에요 (ser)','partículas 은/는, 이/가, 을/를','presente 아요/어요'],core:[
+      {f:'안녕하세요',b:'olá'},{f:'물',b:'água'},{f:'집',b:'casa'},{f:'먹다',b:'comer'},{f:'크다',b:'grande'},{f:'친구',b:'amigo'},{f:'하루',b:'dia'},{f:'좋다',b:'bom'}]},
+    {id:'T2',label:'TOPIK 2',desc:'Básico.',grammar:['passado 았/었어요','futuro 을 거예요','conectivos 그리고/하지만'],core:[
+      {f:'왜냐하면',b:'porque'},{f:'가끔',b:'às vezes'},{f:'날씨',b:'tempo (clima)'},{f:'벌써',b:'já'},{f:'바쁘다',b:'ocupado'},{f:'여행',b:'viagem'},{f:'기억하다',b:'lembrar'},{f:'싸다',b:'barato'}]},
+    {id:'T3',label:'TOPIK 3',desc:'Intermediário.',grammar:['〜는데 (contexto)','honoríficos 〜시','condicional 〜면'],core:[
+      {f:'비록',b:'embora'},{f:'조언',b:'conselho'},{f:'개선하다',b:'melhorar'},{f:'환경',b:'meio ambiente'},{f:'가능하다',b:'ser possível'},{f:'그러나',b:'porém'},{f:'경험',b:'experiência'},{f:'필요하다',b:'ser necessário'}]},
+    {id:'T4',label:'TOPIK 4',desc:'Intermediário-alto.',grammar:['〜기 때문에 (causa)','passiva / causativa','〜는 것 (nominalização)'],core:[
+      {f:'그럼에도 불구하고',b:'mesmo assim'},{f:'성취',b:'conquista'},{f:'극복하다',b:'superar'},{f:'자세하다',b:'detalhado'},{f:'영향',b:'influência'},{f:'경향',b:'tendência'},{f:'해결하다',b:'resolver'},{f:'상황',b:'situação'}]},
+    {id:'T5',label:'TOPIK 5',desc:'Avançado.',grammar:['〜더라도 (concessão)','discurso indireto','conectivos avançados'],core:[
+      {f:'분별하다',b:'discernir'},{f:'옹호하다',b:'defender'},{f:'설득력',b:'poder de persuasão'},{f:'완화하다',b:'atenuar'},{f:'지배적',b:'dominante'},{f:'뉘앙스',b:'nuance'},{f:'성향',b:'inclinação'},{f:'의존하다',b:'depender'}]},
+    {id:'T6',label:'TOPIK 6',desc:'Domínio.',grammar:['registro formal escrito','nuances 〜ㄴ/는 셈','estruturas literárias'],core:[
+      {f:'보편적',b:'universal'},{f:'덧없다',b:'efêmero'},{f:'꼼꼼하다',b:'meticuloso'},{f:'패러다임',b:'paradigma'},{f:'난해하다',b:'difícil de entender'},{f:'솔직함',b:'franqueza'},{f:'모호하다',b:'ambíguo'},{f:'현저하다',b:'notável'}]},
+  ]},
+};
+function langKey(l){const c=langCode(l);return ['en','es','ja','ko'].includes(c)?c:''}
+function curCurriculum(){const k=langKey(curLang());return CURRICULUM[k]||null}
+function levelById(curr,id){return curr?curr.levels.find(x=>x.id===id):null}
+function levelLabel(l){if(!l.level)return '—';const c=CURRICULUM[langKey(l)];const lv=c&&c.levels.find(x=>x.id===l.level);return lv?lv.label:'—'}
+function backfillReadings(){
+  const ja=CURRICULUM.ja;if(!ja)return;
+  const map={};ja.levels.forEach(lv=>lv.core.forEach(it=>{if(it.r)map[normWord(it.f)]=it.r}));
+  let changed=false;
+  DB.languages.forEach(l=>{
+    if(!isJapaneseLang(l))return;
+    l.vocab.forEach(c=>{
+      if(!c.reading){const base=normWord(splitJp(c.front).base);if(map[base]){c.reading=map[base];changed=true;}}
+    });
+  });
+  if(changed)save();
+}
 
 let DB = null;       // estado global
 let session = {};    // estado volátil (flashcard atual, quiz, chat)
@@ -295,13 +405,38 @@ function seed(){
         gq('"Yo ___ español." (hablar)',['hablo','hablas','habla'],0,'Primeira pessoa do singular: hablo.'),
         gq('Artigo correto: "___ mesa"',['el','la','los'],1,'"Mesa" é feminino: la mesa.'),
       ]),
+      lang('Japonês','🇯🇵',[
+        vcard('こんにちは (konnichiwa)','olá / boa tarde','こんにちは！'),
+        vcard('ありがとう (arigatō)','obrigado(a)','どうもありがとう。'),
+        vcard('はい / いいえ (hai / iie)','sim / não','はい、そうです。'),
+        vcard('水 (mizu)','água','水をください。 (Água, por favor.)','みず'),
+        vcard('食べる (taberu)','comer','ご飯を食べる。','たべる'),
+        vcard('学生 (gakusei)','estudante','私は学生です。','がくせい'),
+      ],[
+        gq('"私___学生です。" (Eu sou estudante)',['は (wa)','を (o)','へ (e)'],0,'A partícula は marca o tópico da frase.'),
+        gq('"ありがとう" significa:',['desculpa','obrigado(a)','tchau'],1,'ありがとう = obrigado(a).'),
+        gq('Pedir algo educadamente: "水を___"',['ください (kudasai)','です (desu)','ます (masu)'],0,'〜をください = "... por favor".'),
+      ]),
+      lang('Coreano','🇰🇷',[
+        vcard('안녕하세요 (annyeonghaseyo)','olá (formal)','안녕하세요!'),
+        vcard('감사합니다 (gamsahamnida)','obrigado(a) (formal)','정말 감사합니다.'),
+        vcard('네 / 아니요 (ne / aniyo)','sim / não','네, 맞아요.'),
+        vcard('물 (mul)','água','물 주세요. (Água, por favor.)'),
+        vcard('먹다 (meokda)','comer','밥을 먹어요.'),
+        vcard('학생 (haksaeng)','estudante','저는 학생이에요.'),
+      ],[
+        gq('"저는 학생___." (Eu sou estudante)',['이에요 (ieyo)','주세요 (juseyo)','감사 (gamsa)'],0,'이에요/예요 = "ser/estar" no presente educado.'),
+        gq('"감사합니다" significa:',['olá','obrigado(a)','sim'],1,'감사합니다 = obrigado(a), formal.'),
+        gq('Pedir algo educadamente: "물 ___"',['주세요 (juseyo)','이에요 (ieyo)','네 (ne)'],0,'〜 주세요 = "... por favor".'),
+      ]),
     ],
-    stats:{log:{}} // {data:{cards:n, quiz:n}}
+    stats:{log:{}}, // {data:{cards:n, quiz:n}}
+    settings:{aiEndpoint:'',catalogEndpoint:'',country:'BR',providers:[],jpMode:'romaji'}
   };
 }
-function lang(name,flag,vocab,grammar,songs){return {id:uid(),name,flag,vocab,grammar,songs:songs||[]}}
+function lang(name,flag,vocab,grammar,songs){return {id:uid(),name,flag,vocab,grammar,songs:songs||[],films:[]}}
 function song(o){return {id:uid(),title:o.title,artist:o.artist||'',youtube:o.youtube||'',start:o.start||0,end:o.end||0,lyrics:o.lyrics||'',transLines:null}}
-function vcard(front,back,example){return {id:uid(),front,back,example:example||'',ease:2.5,interval:0,reps:0,due:0}}
+function vcard(front,back,example,reading){return {id:uid(),front,back,example:example||'',reading:reading||'',ease:2.5,interval:0,reps:0,due:0}}
 function gq(prompt,options,answer,explanation){return {id:uid(),prompt,options,answer,explanation:explanation||''}}
 
 /* ---- persistência ---- */
@@ -324,7 +459,10 @@ function logActivity(type,n){
    ========================================================= */
 function boot(){
   DB = load();
-  if(DB&&DB.languages){DB.languages.forEach(l=>{if(!l.songs)l.songs=[]});}
+  if(DB&&DB.languages){DB.languages.forEach(l=>{if(!l.songs)l.songs=[];if(!l.films)l.films=[]});}
+  if(DB&&!DB.settings)DB.settings={};
+  if(DB&&DB.settings){const s=DB.settings;if(s.aiEndpoint==null)s.aiEndpoint='';if(s.catalogEndpoint==null)s.catalogEndpoint='';if(!s.country)s.country='BR';if(!Array.isArray(s.providers))s.providers=[];if(!s.jpMode)s.jpMode='romaji';}
+  if(DB&&DB.languages)backfillReadings();
   if(!DB || !DB.languages || !DB.learner.name){
     DB = DB || seed();
     showOnboarding();
@@ -371,7 +509,7 @@ function switchLang(id){DB.currentLangId=id;save();go(currentView)}
 let currentView='home';
 function go(view){
   currentView=view;
-  ['home','cards','grammar','chat','music','manage'].forEach(v=>{
+  ['home','cards','grammar','chat','music','manage','level'].forEach(v=>{
     document.getElementById('view-'+v).classList.toggle('hidden',v!==view);
   });
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
@@ -379,8 +517,9 @@ function go(view){
   if(view==='cards')renderCards();
   if(view==='grammar')renderGrammar();
   if(view==='chat')renderChat();
-  if(view==='music')renderMusic();
+  if(view==='music')renderMedia();
   if(view==='manage')renderManage();
+  if(view==='level')renderLevel();
   window.scrollTo(0,0);
 }
 
@@ -397,8 +536,8 @@ function streak(){
 function todayTotal(){const e=DB.stats.log[todayKey()];return e?((e.cards||0)+(e.quiz||0)):0}
 
 function renderHome(){
-  const l=curLang();const due=dueCount(l);
   const el=document.getElementById('view-home');
+  const totalDue=DB.languages.reduce((s,l)=>s+dueCount(l),0);
   el.innerHTML=`
     <div class="section-h">
       <div>
@@ -406,26 +545,18 @@ function renderHome(){
         <h2>Bom estudo!</h2>
       </div>
     </div>
-    <div class="grid cols3" style="margin-bottom:16px">
+    <div class="grid cols3" style="margin-bottom:18px">
       <div class="metric"><div class="n">${streak()}</div><div class="l">Dias seguidos 🔥</div></div>
       <div class="metric"><div class="n">${todayTotal()}</div><div class="l">Estudos hoje</div></div>
-      <div class="metric"><div class="n">${due}</div><div class="l"><b>Cards</b> para revisar</div></div>
+      <div class="metric"><div class="n">${totalDue}</div><div class="l"><b>Cards</b> a revisar</div></div>
     </div>
 
-    <div class="card pad" style="margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        <div style="font-size:2rem">${l.flag}</div>
-        <div><div class="eyebrow">Idioma atual</div><h3 style="font-size:1.3rem">${esc(l.name)}</h3></div>
-      </div>
-      <div class="grid cols2">
-        <button class="btn block ${due?'gold':''}" onclick="go('cards')">
-          🃏 Revisar flashcards ${due?`<span class="badge due-dot">${due}</span>`:''}
-        </button>
-        <button class="btn ghost block" onclick="go('grammar')">✏️ Gramática (${l.grammar.length})</button>
-        <button class="btn ghost block" onclick="go('chat')">💬 Conversar com IA</button>
-        <button class="btn ghost block" onclick="go('music')">🎵 Estudar com música (${l.songs?l.songs.length:0})</button>
-        <button class="btn ghost block" onclick="go('manage')">⚙️ Gerenciar conteúdo</button>
-      </div>
+    <div class="section-h" style="margin-bottom:10px">
+      <div><div class="eyebrow">Seu perfil</div><h3 style="font-size:1.3rem">Meus idiomas (${DB.languages.length})</h3></div>
+      <button class="btn ghost sm" onclick="openLangModal()">+ Idioma</button>
+    </div>
+    <div class="grid cols2" style="margin-bottom:18px">
+      ${DB.languages.map(l=>langDashCard(l)).join('')}
     </div>
 
     <div class="card pad">
@@ -435,6 +566,33 @@ function renderHome(){
     </div>
   `;
   drawWeekChart();
+}
+
+function langDashCard(l){
+  const due=dueCount(l);
+  const isCur=l.id===DB.currentLangId;
+  return `<div class="card pad" style="${isCur?'border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-soft) inset':''}">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:1.8rem">${l.flag}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:'DM Serif Display',serif;font-size:1.15rem;line-height:1.1">${esc(l.name)}</div>
+        <div class="muted" style="font-size:.76rem">${l.vocab.length} cards • ${(l.songs||[]).length} 🎵 • ${(l.films||[]).length} 🎬</div>
+      </div>
+      ${due?`<span class="badge due-dot">${due}</span>`:'<span class="badge">em dia</span>'}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn ${due?'gold':''} block sm" onclick="studyLang('${l.id}')">Estudar</button>
+      <button class="icon-btn" title="Abrir idioma" onclick="switchLang('${l.id}');go('home')">${isCur?'★':'☆'}</button>
+    </div>
+    ${langKey(l)?`<button class="btn ghost block sm" style="margin-top:8px" onclick="openLevel('${l.id}')">${l.level?`Nível ${levelLabel(l)} · trilha`:'🎯 Descobrir meu nível'}</button>`:''}
+  </div>`;
+}
+
+function studyLang(id){
+  DB.currentLangId=id;save();refreshLangSwitch();
+  const l=curLang();
+  if(langKey(l)&&!l.level){go('level');return;}
+  go(dueCount(l)>0||l.vocab.length>0?'cards':'manage');
 }
 
 let weekChartRef=null;
@@ -485,6 +643,7 @@ function renderCards(){
   el.innerHTML=section('Flashcards',l)+`<div id="cardStage"></div>`;
   startCardSession(false);
 }
+function jpToggleHTML(){return ''}
 
 function startCardSession(all){
   const l=curLang();const t=nowDays();
@@ -520,7 +679,7 @@ function nextCard(){
         <div class="flash-inner">
           <div class="flash-face flash-front">
             <span class="tag">Toque para ver</span>
-            <div class="word">${esc(session.card.front)}</div>
+            <div class="word">${dispWord(session.card)}</div>
           </div>
           <div class="flash-face flash-back">
             <span class="tag">Tradução</span>
@@ -599,8 +758,8 @@ function renderQuestion(){
     </div>
     <div class="card pad">
       <div class="eyebrow">Questão ${s.i+1} de ${s.list.length}</div>
-      <h3 style="font-size:1.2rem;margin:8px 0 16px">${esc(q.prompt)}</h3>
-      <div id="opts">${q.options.map((o,idx)=>`<button class="opt" onclick="answer(${idx})">${esc(o)}</button>`).join('')}</div>
+      <h3 style="font-size:1.2rem;margin:8px 0 16px">${esc(jpText(q.prompt))}</h3>
+      <div id="opts">${q.options.map((o,idx)=>`<button class="opt" onclick="answer(${idx})">${esc(jpText(o))}</button>`).join('')}</div>
       <div id="explain"></div>
     </div>`;
 }
@@ -615,8 +774,8 @@ function answer(idx){
   logActivity('quiz',1);
   document.getElementById('explain').innerHTML=`
     <div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:#f4f1e8">
-      <strong style="color:${idx===q.answer?'var(--ok)':'var(--warn)'}">${idx===q.answer?'Correto! ✓':'Resposta: '+esc(q.options[q.answer])}</strong>
-      ${q.explanation?`<p class="muted" style="margin-top:6px;font-size:.9rem">${esc(q.explanation)}</p>`:''}
+      <strong style="color:${idx===q.answer?'var(--ok)':'var(--warn)'}">${idx===q.answer?'Correto! ✓':'Resposta: '+esc(jpText(q.options[q.answer]))}</strong>
+      ${q.explanation?`<p class="muted" style="margin-top:6px;font-size:.9rem">${esc(jpText(q.explanation))}</p>`:''}
     </div>
     <button class="btn block" style="margin-top:14px" onclick="session.qz.i++;renderQuestion()">
       ${s.i+1>=s.list.length?'Ver resultado':'Próxima'}</button>`;
@@ -681,16 +840,11 @@ Regras:
 
   try{
     const messages=session.chat.map(m=>({role:m.role,content:m.content}));
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,system:sys,messages})
-    });
-    const data=await res.json();
-    const reply=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim()
-      || 'Desculpe, não consegui responder agora.';
+    const data=await callClaude(sys,messages);
+    const reply=extractText(data).trim() || 'Desculpe, não consegui responder agora.';
     session.chat.push({role:'assistant',content:reply});
   }catch(e){
-    session.chat.push({role:'assistant',content:'⚠️ Não foi possível conectar ao tutor. A conversa com IA funciona no preview do claude.ai. Em outro servidor (ex.: GitHub Pages), é preciso um backend próprio.'});
+    session.chat.push({role:'assistant',content:'⚠️ Tutor de IA não conectado. Configure o endpoint em Gerenciar › Dados, ou use no preview do claude.ai.'});
   }finally{
     document.getElementById('chatSend').disabled=false;
     paintChat();
@@ -716,6 +870,16 @@ function renderManage(){
         </div>
       </div>
     </div>
+    ${isJapanese()?`<div class="card pad" style="margin-bottom:14px">
+      <div class="eyebrow">Exibição do japonês</div>
+      <h3 style="font-size:1.05rem;margin:2px 0 4px">Como mostrar as palavras</h3>
+      <p class="muted" style="font-size:.84rem;margin-bottom:12px">Vale em todo o app — flashcards, gramática e níveis. Escolha conforme seu domínio do alfabeto japonês.</p>
+      <div class="seg" style="margin-bottom:0">
+        <button class="${DB.settings.jpMode==='romaji'?'active':''}" onclick="setJpMode('romaji')">Romaji</button>
+        <button class="${DB.settings.jpMode==='furigana'?'active':''}" onclick="setJpMode('furigana')">Furigana</button>
+        <button class="${DB.settings.jpMode==='off'?'active':''}" onclick="setJpMode('off')">Só kanji</button>
+      </div>
+    </div>`:''}
     <div class="seg">
       <button class="${manageTab==='vocab'?'active':''}" onclick="manageTab='vocab';renderManage()">Vocabulário (${l.vocab.length})</button>
       <button class="${manageTab==='grammar'?'active':''}" onclick="manageTab='grammar';renderManage()">Gramática (${l.grammar.length})</button>
@@ -733,7 +897,7 @@ function renderVocabAdmin(){
     <button class="btn block gold" style="margin-bottom:14px" onclick="openCardModal()">+ Adicionar card</button>
     ${l.vocab.length===0?'<p class="empty muted">Nenhum card ainda.</p>':
     l.vocab.map(c=>`<div class="row-item">
-      <div class="grow"><div class="t">${esc(c.front)}</div><div class="d">${esc(c.back)}${c.due<=nowDays()?' • <span style="color:var(--gold)">para revisar</span>':''}</div></div>
+      <div class="grow"><div class="t">${dispWord(c)}</div><div class="d">${esc(c.back)}${c.due<=nowDays()?' • <span style="color:var(--gold)">para revisar</span>':''}</div></div>
       <button class="icon-btn" onclick="openCardModal('${c.id}')">✏️</button>
       <button class="icon-btn" onclick="delCard('${c.id}')">🗑️</button>
     </div>`).join('')}`;
@@ -744,7 +908,7 @@ function renderGrammarAdmin(){
     <button class="btn block gold" style="margin-bottom:14px" onclick="openQModal()">+ Adicionar questão</button>
     ${l.grammar.length===0?'<p class="empty muted">Nenhuma questão ainda.</p>':
     l.grammar.map(q=>`<div class="row-item">
-      <div class="grow"><div class="t">${esc(q.prompt)}</div><div class="d">✓ ${esc(q.options[q.answer])}</div></div>
+      <div class="grow"><div class="t">${esc(jpText(q.prompt))}</div><div class="d">✓ ${esc(jpText(q.options[q.answer]))}</div></div>
       <button class="icon-btn" onclick="openQModal('${q.id}')">✏️</button>
       <button class="icon-btn" onclick="delQ('${q.id}')">🗑️</button>
     </div>`).join('')}`;
@@ -752,6 +916,28 @@ function renderGrammarAdmin(){
 function renderDataAdmin(){
   const body=document.getElementById('manageBody');
   body.innerHTML=`
+    <div class="card pad" style="margin-bottom:14px">
+      <h3 style="font-size:1.1rem;color:var(--petrol);margin-bottom:6px">Conectar IA (opcional)</h3>
+      <p class="muted" style="font-size:.88rem;margin-bottom:12px">Para ligar o tutor, a tradução de letras e a geração de flashcards no GitHub Pages, cole aqui a URL do seu backend (ex.: Cloudflare Worker). Deixe em branco para usar só no preview do claude.ai.</p>
+      <label class="field"><span>Endpoint da IA</span>
+        <input id="aiEndpoint" class="input" value="${esc(DB.settings.aiEndpoint||'')}" placeholder="https://seu-worker.workers.dev"></label>
+      <div style="display:flex;gap:8px">
+        <button class="btn block" onclick="saveEndpoint()">Salvar endpoint</button>
+        ${DB.settings.aiEndpoint?'<button class="btn ghost" onclick="DB.settings.aiEndpoint=\'\';save();renderManage();toast(\'IA desconectada\')">Limpar</button>':''}
+      </div>
+      <p class="muted" style="font-size:.74rem;margin-top:8px">Status: ${DB.settings.aiEndpoint?'<b style="color:var(--ok)">conectado</b>':'usando padrão (claude.ai)'}</p>
+    </div>
+    <div class="card pad" style="margin-bottom:14px">
+      <h3 style="font-size:1.1rem;color:var(--petrol);margin-bottom:6px">Conectar catálogo (recomendações)</h3>
+      <p class="muted" style="font-size:.88rem;margin-bottom:12px">Para as recomendações de filmes por provedor e idioma, cole a URL do seu backend de catálogo (ex.: Worker que consulta a TMDB). Ele recebe <code>{language, country, providers}</code> e devolve <code>{results:[...]}</code>.</p>
+      <label class="field"><span>Endpoint do catálogo</span>
+        <input id="catEndpoint" class="input" value="${esc(DB.settings.catalogEndpoint||'')}" placeholder="https://seu-worker.workers.dev/catalogo"></label>
+      <div style="display:flex;gap:8px">
+        <button class="btn block" onclick="saveCatEndpoint()">Salvar endpoint</button>
+        ${DB.settings.catalogEndpoint?'<button class="btn ghost" onclick="DB.settings.catalogEndpoint=\'\';save();renderManage();toast(\'Catálogo desconectado\')">Limpar</button>':''}
+      </div>
+      <p class="muted" style="font-size:.74rem;margin-top:8px">Status: ${DB.settings.catalogEndpoint?'<b style="color:var(--ok)">conectado</b>':'não conectado'}</p>
+    </div>
     <div class="card pad">
       <h3 style="font-size:1.1rem;color:var(--petrol);margin-bottom:6px">Backup e restauração</h3>
       <p class="muted" style="font-size:.88rem;margin-bottom:14px">Seu progresso fica salvo neste navegador. Exporte para guardar ou transferir.</p>
@@ -763,6 +949,14 @@ function renderDataAdmin(){
       <hr style="border:none;border-top:1px solid var(--line);margin:18px 0">
       <button class="btn block" style="background:var(--warn)" onclick="confirmReset()">Apagar tudo e recomeçar</button>
     </div>`;
+}
+function saveEndpoint(){
+  DB.settings.aiEndpoint=document.getElementById('aiEndpoint').value.trim();
+  save();renderManage();toast(DB.settings.aiEndpoint?'IA conectada':'Endpoint salvo');
+}
+function saveCatEndpoint(){
+  DB.settings.catalogEndpoint=document.getElementById('catEndpoint').value.trim();
+  save();renderManage();toast(DB.settings.catalogEndpoint?'Catálogo conectado':'Endpoint salvo');
 }
 
 /* ---- modais de edição ---- */
@@ -840,6 +1034,7 @@ function openLangModal(id){
       <div style="display:flex;flex-wrap:wrap;gap:6px" id="flagPick">
         ${FLAGS.map(f=>`<button type="button" class="icon-btn" style="font-size:1.3rem;width:42px;height:42px;${(l&&l.flag===f)||(!l&&f==='🌐')?'border-color:var(--gold);background:#faf6e8':''}" onclick="pickFlag(this,'${f}')">${f}</button>`).join('')}
       </div></label>
+    <label class="field"><span>Código ISO (opcional — p/ recomendações)</span><input id="l_code" class="input" value="${l&&l.code?esc(l.code):''}" placeholder="ex.: en, ja, ko, es"></label>
     <div style="display:flex;gap:8px;margin-top:6px">
       <button class="btn ghost block" onclick="closeModal()">Cancelar</button>
       <button class="btn block" onclick="saveLang('${id||''}')">Salvar</button>
@@ -851,9 +1046,10 @@ function pickFlag(btn,f){session._flag=f;
   btn.style.borderColor='var(--gold)';btn.style.background='#faf6e8';}
 function saveLang(id){
   const name=document.getElementById('l_name').value.trim();
+  const code=(document.getElementById('l_code').value.trim()||'').toLowerCase();
   if(!name){toast('Digite o nome do idioma');return}
-  if(id){const l=DB.languages.find(x=>x.id===id);l.name=name;l.flag=session._flag;}
-  else{const nl=lang(name,session._flag||'🌐',[],[]);DB.languages.push(nl);DB.currentLangId=nl.id;}
+  if(id){const l=DB.languages.find(x=>x.id===id);l.name=name;l.flag=session._flag;l.code=code;}
+  else{const nl=lang(name,session._flag||'🌐',[],[]);nl.code=code;DB.languages.push(nl);DB.currentLangId=nl.id;}
   save();refreshLangSwitch();closeModal();renderManage();toast('Idioma salvo');
 }
 
@@ -867,7 +1063,11 @@ function importData(input){
   const file=input.files[0];if(!file)return;
   const r=new FileReader();
   r.onload=()=>{try{const d=JSON.parse(r.result);
-    if(!d.languages)throw 0;DB=d;save();refreshLangSwitch();renderManage();toast('Dados importados');
+    if(!d.languages)throw 0;
+    if(!d.settings)d.settings={};
+    {const s=d.settings;if(s.aiEndpoint==null)s.aiEndpoint='';if(s.catalogEndpoint==null)s.catalogEndpoint='';if(!s.country)s.country='BR';if(!Array.isArray(s.providers))s.providers=[];}
+    d.languages.forEach(l=>{if(!l.songs)l.songs=[];if(!l.films)l.films=[]});
+    DB=d;save();refreshLangSwitch();renderManage();toast('Dados importados');
   }catch(e){toast('Arquivo inválido')}};
   r.readAsText(file);
 }
@@ -889,21 +1089,31 @@ function parseYouTube(url){
   return {id:m[1],t};
 }
 
-function renderMusic(){
+let mediaTab='music';
+function renderMedia(){
   const l=curLang();
   const el=document.getElementById('view-music');
-  if(!l.songs||l.songs.length===0){
-    el.innerHTML=section('Música',l)+`
-      <button class="btn block gold" style="margin-bottom:14px" onclick="openSongModal()">+ Adicionar música</button>
-      <div class="card pad empty"><div class="big">🎵</div>
-        <h3 style="color:var(--petrol)">Aprenda com suas músicas</h3>
-        <p class="muted" style="margin:8px 0 0">Cole a letra, escolha um trecho do YouTube e deixe a IA traduzir e criar os flashcards.</p>
-      </div>`;
-    return;
-  }
-  el.innerHTML=section('Música',l)+`
+  el.innerHTML=`
+    <div class="section-h"><div><div class="eyebrow">${l.flag} ${esc(l.name)}</div><h2>Mídia</h2></div></div>
+    <div class="seg">
+      <button class="${mediaTab==='music'?'active':''}" onclick="mediaTab='music';renderMedia()">🎵 Música</button>
+      <button class="${mediaTab==='film'?'active':''}" onclick="mediaTab='film';renderMedia()">🎬 Filmes</button>
+      <button class="${mediaTab==='reco'?'active':''}" onclick="mediaTab='reco';renderMedia()">📺 Recomenda</button>
+    </div>
+    <div id="mediaBody"></div>`;
+  if(mediaTab==='music')renderMusicList();
+  else if(mediaTab==='film')renderFilmList();
+  else renderRecoList();
+}
+
+function renderMusicList(){
+  const l=curLang();const body=document.getElementById('mediaBody');
+  body.innerHTML=`
     <button class="btn block gold" style="margin-bottom:14px" onclick="openSongModal()">+ Adicionar música</button>
-    ${l.songs.map(s=>`<div class="row-item" style="cursor:pointer" onclick="openSong('${s.id}')">
+    ${(!l.songs||l.songs.length===0)?`<div class="card pad empty"><div class="big">🎵</div>
+      <h3 style="color:var(--petrol)">Aprenda com suas músicas</h3>
+      <p class="muted" style="margin:8px 0 0">Cole a letra, escolha um trecho do YouTube e deixe a IA traduzir e criar os flashcards.</p></div>`:
+    l.songs.map(s=>`<div class="row-item" style="cursor:pointer" onclick="openSong('${s.id}')">
       <div style="font-size:1.4rem">🎵</div>
       <div class="grow"><div class="t">${esc(s.title)}</div><div class="d">${esc(s.artist||'—')}</div></div>
       <button class="icon-btn" onclick="event.stopPropagation();openSongModal('${s.id}')">✏️</button>
@@ -937,6 +1147,7 @@ function openSong(id){
         <button class="btn sm ${s.transLines?'ghost':'gold'}" id="btnTrad" onclick="translateSong('${s.id}')">
           ${s.transLines?'Ocultar tradução':'🌐 Traduzir letra'}</button>
         <button class="btn sm" onclick="genFlashcards('${s.id}')">✨ Gerar flashcards</button>
+        <button class="btn sm ghost" onclick="genGrammarForSong('${s.id}')">✏️ Teste gramatical</button>
       </div>
       <div id="lyrics">${renderLyrics(s)}</div>
     </div>
@@ -1052,19 +1263,465 @@ function saveSong(id){
   if(!o.title){toast('Dê um título à música');return}
   if(id){const s=l.songs.find(x=>x.id===id);Object.assign(s,o);s.transLines=null;}
   else l.songs.push(song(o));
-  save();closeModal();renderMusic();toast('Música salva');
+  save();closeModal();renderMedia();toast('Música salva');
 }
-function delSong(id){const l=curLang();l.songs=l.songs.filter(s=>s.id!==id);save();renderMusic();toast('Música removida')}
+function delSong(id){const l=curLang();l.songs=l.songs.filter(s=>s.id!==id);save();renderMedia();toast('Música removida')}
+
+/* =========================================================
+   FILMES & SÉRIES — vocabulário + cobertura
+   ========================================================= */
+function filmRec(o){return {id:uid(),title:o.title,note:o.note||'',source:o.source||'name',words:o.words||[]}}
+
+/* ---- algoritmo: índice de conhecimento a partir de TODO o conteúdo ---- */
+function normWord(s){
+  return (s||'').toLowerCase()
+    .replace(/\([^)]*\)/g,' ')              // remove romanização entre parênteses
+    .replace(/[^\p{L}\p{N}\s]/gu,' ')        // remove pontuação
+    .replace(/\s+/g,' ').trim();
+}
+function tokenize(s){return normWord(s).split(' ').filter(t=>t.length>1)}
+function stemLatin(w){
+  if(w.length<5)return w;
+  return w.replace(/(mente|ções|ção|ndo|ado|ada|ados|adas|ing|ed|s|mos|emos|amos)$/,'');
+}
+function cardMastered(c){return (c.interval>=21)||(c.reps>=4)}
+
+/* nível 2 = domino, 1 = conheço/em aprendizado, 0 = novo */
+function buildKnowledge(l){
+  const idx=new Map();
+  const put=(tok,lvl)=>{
+    if(!tok)return;
+    if((idx.get(tok)||0)<lvl)idx.set(tok,lvl);
+    const st=stemLatin(tok);
+    if(st&&st!==tok&&(idx.get(st)||0)<lvl)idx.set(st,lvl);
+  };
+  // 1) flashcards: termo + exemplos
+  l.vocab.forEach(c=>{
+    const lvl=cardMastered(c)?2:1;
+    tokenize(c.front).forEach(t=>put(t,lvl));
+    tokenize(c.example).forEach(t=>put(t,1)); // exposição em exemplo
+  });
+  // 2) músicas que você traduziu (exposição)
+  (l.songs||[]).forEach(s=>{if(s.transLines)tokenize(s.lyrics).forEach(t=>put(t,1))});
+  // 3) filmes já estudados (palavras adicionadas voltam pelos cards; exemplos contam)
+  return idx;
+}
+function wordStatus(word,idx){
+  const toks=tokenize(word);
+  if(!toks.length)return 'nova';
+  let lvl=0;
+  toks.forEach(t=>{let v=idx.get(t)||idx.get(stemLatin(t))||0;if(v>lvl)lvl=v});
+  return lvl===2?'sei':lvl===1?'aprendendo':'nova';
+}
+function classifyFilm(film,l){
+  const idx=buildKnowledge(l);
+  const items=film.words.map(w=>({...w,status:wordStatus(w.front,idx)}));
+  const sei=items.filter(i=>i.status==='sei').length;
+  const apr=items.filter(i=>i.status==='aprendendo').length;
+  const nova=items.filter(i=>i.status==='nova').length;
+  const total=items.length||1;
+  const pct=Math.round(((sei+apr*0.5)/total)*100);
+  return {items,sei,apr,nova,total:items.length,pct};
+}
+
+/* ---- lista de filmes ---- */
+function renderFilmList(){
+  const l=curLang();const body=document.getElementById('mediaBody');
+  body.innerHTML=`
+    <button class="btn block gold" style="margin-bottom:14px" onclick="openFilmModal()">+ Adicionar filme/série</button>
+    ${(!l.films||l.films.length===0)?`<div class="card pad empty"><div class="big">🎬</div>
+      <h3 style="color:var(--petrol)">Estude o vocabulário de um filme</h3>
+      <p class="muted" style="margin:8px 0 0">Digite o nome do filme ou cole a legenda. O app monta o vocabulário e mostra quanto você já entende.</p></div>`:
+    l.films.map(f=>{const c=classifyFilm(f,l);return `<div class="row-item" style="cursor:pointer" onclick="openFilm('${f.id}')">
+      <div style="font-size:1.4rem">🎬</div>
+      <div class="grow"><div class="t">${esc(f.title)}</div><div class="d">${f.words.length} palavras • você entende ~${c.pct}%</div></div>
+      <button class="icon-btn" onclick="event.stopPropagation();delFilm('${f.id}')">🗑️</button>
+    </div>`}).join('')}`;
+}
+
+function openFilmModal(){
+  modal(`<h3>Novo filme / série</h3>
+    <label class="field"><span>Título</span><input id="f_title" class="input" placeholder="Ex.: Top Gun, Shrek, Friends..."></label>
+    <div class="seg" style="margin-bottom:4px">
+      <button id="fm_name" class="active" onclick="filmMode('name')">Pelo nome</button>
+      <button id="fm_srt" onclick="filmMode('srt')">Tenho a legenda</button>
+    </div>
+    <div id="f_namebox">
+      <label class="field"><span>Gênero/contexto (opcional, ajuda a IA)</span><input id="f_note" class="input" placeholder="Ex.: ação militar, comédia infantil..."></label>
+    </div>
+    <div id="f_srtbox" class="hidden">
+      <label class="field"><span>Cole a legenda (.srt) ou o texto</span><textarea id="f_srt" class="input" style="min-height:130px" placeholder="1\n00:00:01,000 --> 00:00:03,000\nHello, how are you?..."></textarea></label>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn ghost block" onclick="closeModal()">Cancelar</button>
+      <button class="btn block gold" onclick="generateFilm()">✨ Gerar vocabulário</button>
+    </div>`);
+  session.filmMode='name';
+}
+function filmMode(m){
+  session.filmMode=m;
+  document.getElementById('fm_name').classList.toggle('active',m==='name');
+  document.getElementById('fm_srt').classList.toggle('active',m==='srt');
+  document.getElementById('f_namebox').classList.toggle('hidden',m!=='name');
+  document.getElementById('f_srtbox').classList.toggle('hidden',m!=='srt');
+}
+
+async function generateFilm(){
+  const title=document.getElementById('f_title').value.trim();
+  if(!title){toast('Dê um título');return}
+  const mode=session.filmMode||'name';
+  const note=mode==='name'?document.getElementById('f_note').value.trim():'';
+  const srt=mode==='srt'?document.getElementById('f_srt').value.trim():'';
+  if(mode==='srt'&&!srt){toast('Cole a legenda');return}
+  generateFilmCore(title,mode,note,srt);
+}
+async function generateFilmCore(title,mode,note,srt){
+  const l=curLang();
+  modal(`<h3>Gerando vocabulário…</h3><div style="text-align:center;padding:20px">
+    <span class="typing"><i></i><i></i><i></i></span>
+    <p class="muted" style="margin-top:12px">${mode==='srt'?'Lendo a legenda':'Montando o vocabulário típico do filme'} em ${esc(l.name)}.</p></div>`);
+  let sys,user;
+  if(mode==='srt'){
+    sys=`Você extrai vocabulário de ${l.name} a partir de legendas fornecidas pelo usuário, para um falante de português brasileiro.
+Escolha de 20 a 40 palavras/expressões úteis e frequentes que REALMENTE aparecem no texto (não invente).
+Responda APENAS com um array JSON, sem markdown:
+[{"front":"palavra/expressão em ${l.name}","back":"tradução em português","example":"trecho curto onde aparece"}]`;
+    user=(srt||'').slice(0,9000);
+  }else{
+    sys=`Você prepara vocabulário de ${l.name} para um falante de português brasileiro estudar ANTES de assistir a um filme/série.
+A partir do título, liste de 20 a 30 palavras e expressões que provavelmente aparecem na obra, pelo gênero, tema e contexto (não precisa ser o roteiro exato). Priorize vocabulário característico e útil.
+Responda APENAS com um array JSON, sem markdown:
+[{"front":"palavra/expressão em ${l.name}","back":"tradução em português","example":"frase curta de exemplo"}]`;
+    user=`Filme/série: ${title}${note?` (contexto: ${note})`:''}`;
+  }
+  try{
+    const data=await callClaude(sys,[{role:'user',content:user}]);
+    let txt=extractText(data).replace(/```json|```/g,'').trim();
+    let arr=JSON.parse(txt);
+    if(!Array.isArray(arr)||!arr.length)throw 0;
+    const words=arr.filter(w=>w.front&&w.back).map(w=>({front:w.front,back:w.back,example:w.example||''}));
+    const f=filmRec({title,note,source:mode,words});
+    l.films.push(f);save();closeModal();mediaTab='film';openFilm(f.id);
+  }catch(e){
+    modal(`<h3>Ops</h3><p class="muted" style="margin-bottom:16px">Não consegui gerar agora. A geração por IA funciona no preview do claude.ai ou com seu backend conectado (Gerenciar › Dados).</p>
+      <button class="btn block" onclick="closeModal()">Fechar</button>`);
+  }
+}
+
+function openFilm(id){
+  const l=curLang();const f=l.films.find(x=>x.id===id);if(!f)return;
+  mediaTab='film';
+  const c=classifyFilm(f,l);
+  const el=document.getElementById('view-music');
+  const chip=(s)=>s==='sei'?'<span class="badge" style="background:#e7f4ed;color:#1c5a40">já sei</span>'
+    :s==='aprendendo'?'<span class="badge" style="background:#fbf0d8;color:#8a6a16">aprendendo</span>'
+    :'<span class="badge" style="background:#fbeae5;color:#8a3a25">nova</span>';
+  el.innerHTML=`
+    <div class="section-h"><div><div class="eyebrow">🎬 ${l.flag} ${esc(l.name)}</div><h2 style="font-size:1.35rem">${esc(f.title)}</h2></div>
+      <button class="btn ghost sm" onclick="go('music')">‹ Voltar</button></div>
+
+    <div class="card pad" style="margin-bottom:14px;text-align:center">
+      <div class="eyebrow">Compreensão estimada</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:3rem;color:var(--petrol);line-height:1">${c.pct}%</div>
+      <div style="height:10px;background:#e7e2d6;border-radius:99px;overflow:hidden;margin:12px 0 14px">
+        <div style="height:100%;width:${c.pct}%;background:linear-gradient(90deg,var(--gold),var(--gold-soft));transition:.4s"></div>
+      </div>
+      <p class="muted" style="font-size:.9rem">${c.pct>=70?'Você deve entender a maior parte! 🎉':c.pct>=40?'Bom ponto de partida — estude as novas pra ficar mais seguro.':'Vale estudar antes de assistir. Vamos lá!'}</p>
+      <div class="grid cols3" style="margin-top:14px">
+        <div class="metric"><div class="n" style="color:#2E7D5B">${c.sei}</div><div class="l">Já sei</div></div>
+        <div class="metric"><div class="n" style="color:#C0892E">${c.apr}</div><div class="l">Aprendendo</div></div>
+        <div class="metric"><div class="n" style="color:#C0563A">${c.nova}</div><div class="l">Novas</div></div>
+      </div>
+      ${c.nova>0?`<button class="btn gold block" style="margin-top:14px" onclick="addFilmWords('${f.id}')">+ Estudar as ${c.nova} palavras novas</button>`:''}
+      <button class="btn ghost block" style="margin-top:8px" onclick="genGrammarForFilm('${f.id}')">✏️ Gerar teste gramatical deste título</button>
+    </div>
+
+    <div class="card pad">
+      <h3 style="font-size:1.1rem;margin-bottom:12px">Vocabulário do filme</h3>
+      ${c.items.map(w=>`<div class="row-item">
+        <div class="grow"><div class="t">${dispWord(w)}</div><div class="d">${esc(w.back)}${w.example?` — <i>${esc(w.example)}</i>`:''}</div></div>
+        ${chip(w.status)}
+      </div>`).join('')}
+    </div>
+    <p class="muted" style="font-size:.74rem;margin-top:10px">A % se recalcula sozinha conforme você domina mais cards — reabra o filme depois de estudar pra ver subir.</p>`;
+}
+
+function addFilmWords(id){
+  const l=curLang();const f=l.films.find(x=>x.id===id);if(!f)return;
+  const c=classifyFilm(f,l);
+  session.genCards=c.items.filter(w=>w.status==='nova').map(w=>({...w,pick:true}));
+  if(!session.genCards.length){toast('Nenhuma palavra nova');return}
+  modal(`<h3>Adicionar ao baralho</h3>
+    <p class="muted" style="font-size:.86rem;margin-bottom:14px">Estas palavras novas vão entrar na sua repetição espaçada. Desmarque o que não quiser.</p>
+    <div style="max-height:46vh;overflow-y:auto">
+    ${session.genCards.map((w,i)=>`<label class="row-item" style="cursor:pointer">
+      <input type="checkbox" checked onchange="session.genCards[${i}].pick=this.checked" style="width:18px;height:18px;accent-color:var(--petrol)">
+      <div class="grow"><div class="t">${esc(w.front)}</div><div class="d">${esc(w.back)}</div></div>
+    </label>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn ghost block" onclick="closeModal()">Cancelar</button>
+      <button class="btn block gold" onclick="addGenCards();openFilm('${id}')">Adicionar selecionados</button>
+    </div>`);
+}
+function delFilm(id){const l=curLang();l.films=l.films.filter(f=>f.id!==id);save();renderMedia();toast('Filme removido')}
+
+/* =========================================================
+   RECOMENDAÇÕES — catálogo por provedor + idioma (backend)
+   ========================================================= */
+function renderRecoList(){
+  const l=curLang();const body=document.getElementById('mediaBody');
+  const s=DB.settings;const code=langCode(l);
+  const provLine=s.providers.length?s.providers.map(provName).join(', '):'nenhum selecionado';
+  const head=`
+    <div class="card pad" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="min-width:0">
+          <div class="eyebrow">Seus serviços</div>
+          <div style="font-weight:600">${(COUNTRIES.find(c=>c.k===s.country)||{}).n||s.country} • ${esc(provLine)}</div>
+          <div class="muted" style="font-size:.78rem">Idioma: ${l.flag} ${esc(l.name)}${code?` (${code})`:' — defina o código ISO em Gerenciar'}</div>
+        </div>
+        <button class="btn ghost sm" onclick="openRecoSettings()">Ajustar</button>
+      </div>
+    </div>`;
+  if(!s.catalogEndpoint){
+    body.innerHTML=head+`<div class="card pad empty"><div class="big">📺</div>
+      <h3 style="color:var(--petrol)">Conecte seu catálogo</h3>
+      <p class="muted" style="margin:8px 0 14px">Para listar o que está nos seus serviços por idioma, conecte um backend de catálogo (TMDB) em <b>Gerenciar › Dados</b>. Enquanto isso, já dá pra escolher país e provedores.</p>
+      <button class="btn ghost" onclick="go('manage');manageTab='data';setTimeout(renderManage,0)">Ir para conexão</button></div>`;
+    return;
+  }
+  body.innerHTML=head+`
+    <button class="btn block gold" style="margin-bottom:14px" onclick="fetchReco()">🔎 Buscar recomendações em ${esc(l.name)}</button>
+    <div id="recoResults">${session.reco?recoCards(session.reco):'<p class="empty muted">Toque em buscar para ver títulos na língua original disponíveis nos seus serviços.</p>'}</div>`;
+}
+function recoCards(list){
+  if(!list.length)return '<p class="empty muted">Nenhum título encontrado para esses filtros.</p>';
+  return list.map((r,i)=>`<div class="row-item" style="cursor:pointer" onclick="recoStudy(${i})">
+    ${r.poster?`<img src="${esc(r.poster)}" style="width:42px;height:62px;object-fit:cover;border-radius:6px;flex:none" onerror="this.style.display='none'">`:'<div style="font-size:1.4rem">🎬</div>'}
+    <div class="grow"><div class="t">${esc(r.title)}${r.year?` <span class="muted">(${r.year})</span>`:''}</div>
+      <div class="d">${(r.providers||[]).map(esc).join(' • ')||'—'}</div></div>
+    <span class="badge">estudar</span>
+  </div>`).join('');
+}
+async function fetchReco(){
+  const l=curLang();const s=DB.settings;const code=langCode(l);
+  if(!s.catalogEndpoint){toast('Conecte o catálogo em Gerenciar › Dados');return}
+  if(!s.providers.length){toast('Selecione ao menos um provedor');return}
+  const box=document.getElementById('recoResults');
+  box.innerHTML=`<div style="text-align:center;padding:24px"><span class="typing"><i></i><i></i><i></i></span><p class="muted" style="margin-top:10px">Buscando no catálogo…</p></div>`;
+  try{
+    const res=await fetch(s.catalogEndpoint,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({language:code,country:s.country,providers:s.providers,page:1})});
+    const data=await res.json();
+    const list=(data.results||[]).map(r=>({
+      title:r.title||r.name||'',year:r.year||(r.release_date||'').slice(0,4),
+      poster:r.poster||'',providers:r.providers||[]
+    })).filter(r=>r.title);
+    session.reco=list;box.innerHTML=recoCards(list);
+  }catch(e){
+    box.innerHTML=`<div class="card pad"><p class="muted">Não foi possível buscar agora. Verifique o endpoint do catálogo em Gerenciar › Dados. (No GitHub Pages, é necessário o backend conectado.)</p></div>`;
+  }
+}
+function recoStudy(i){
+  const r=(session.reco||[])[i];if(!r)return;
+  generateFilmCore(r.title,'name','','');
+}
+
+function openRecoSettings(){
+  const s=DB.settings;
+  modal(`<h3>Seus serviços de streaming</h3>
+    <label class="field"><span>País (catálogo)</span>
+      <select id="r_country" class="input">${COUNTRIES.map(c=>`<option value="${c.k}" ${s.country===c.k?'selected':''}>${c.n}</option>`).join('')}</select></label>
+    <label class="field"><span>Provedores que você assina</span></label>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+      ${PROVIDERS.map(p=>`<label class="badge" style="cursor:pointer;padding:8px 12px;display:inline-flex;gap:6px;align-items:center;background:${s.providers.includes(p.k)?'#faf6e8':'#efe9d8'};border:1px solid ${s.providers.includes(p.k)?'var(--gold)':'transparent'}">
+        <input type="checkbox" value="${p.k}" ${s.providers.includes(p.k)?'checked':''} style="accent-color:var(--petrol)"> ${p.n}</label>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn ghost block" onclick="closeModal()">Cancelar</button>
+      <button class="btn block gold" onclick="saveRecoSettings()">Salvar</button>
+    </div>`);
+}
+function saveRecoSettings(){
+  DB.settings.country=document.getElementById('r_country').value;
+  DB.settings.providers=[...document.querySelectorAll('.modal input[type=checkbox]:checked')].map(i=>i.value);
+  save();closeModal();renderMedia();toast('Serviços salvos');
+}
+
+/* =========================================================
+   TESTE GRAMATICAL a partir de mídia (música/filme)
+   ========================================================= */
+async function genGrammarFromText(text,label){
+  const l=curLang();
+  modal(`<h3>Gerando teste…</h3><div style="text-align:center;padding:20px">
+    <span class="typing"><i></i><i></i><i></i></span>
+    <p class="muted" style="margin-top:12px">Criando questões de gramática em ${esc(l.name)}.</p></div>`);
+  const sys=`Crie um teste de gramática de ${l.name} para um falante de português brasileiro, baseado no conteúdo a seguir (${label}).
+Gere de 4 a 6 questões de múltipla escolha sobre estruturas gramaticais típicas ou que aparecem no conteúdo.
+Cada questão deve ter: enunciado claro, 3 opções, o índice (0 a 2) da opção correta e uma explicação curta em português.
+Responda APENAS com um array JSON, sem markdown:
+[{"prompt":"","options":["","",""],"answer":0,"explanation":""}]`;
+  try{
+    const data=await callClaude(sys,[{role:'user',content:(text||'').slice(0,8000)}]);
+    let txt=extractText(data).replace(/```json|```/g,'').trim();
+    let arr=JSON.parse(txt);
+    if(!Array.isArray(arr)||!arr.length)throw 0;
+    let n=0;
+    arr.forEach(q=>{
+      if(q.prompt&&Array.isArray(q.options)&&q.options.length>=2&&typeof q.answer==='number'){
+        const ans=Math.max(0,Math.min(q.options.length-1,q.answer));
+        l.grammar.push(gq(q.prompt,q.options,ans,q.explanation||''));n++;
+      }
+    });
+    save();closeModal();toast(n+' questões adicionadas à Gramática');
+  }catch(e){
+    modal(`<h3>Ops</h3><p class="muted" style="margin-bottom:16px">Não consegui gerar o teste agora. A IA funciona no preview do claude.ai ou com seu backend conectado.</p>
+      <button class="btn block" onclick="closeModal()">Fechar</button>`);
+  }
+}
+function genGrammarForSong(id){const l=curLang();const s=l.songs.find(x=>x.id===id);if(!s||!s.lyrics.trim()){toast('Cole a letra primeiro');return}genGrammarFromText(s.lyrics,'letra da música "'+s.title+'"');}
+function genGrammarForFilm(id){const l=curLang();const f=l.films.find(x=>x.id===id);if(!f)return;const ctx=f.title+'\n'+f.words.map(w=>`${w.front} = ${w.back}`).join('\n');genGrammarFromText(ctx,'filme/série "'+f.title+'"');}
 
 /* ---- chamada genérica ao Claude ---- */
 async function callClaude(system,messages){
-  const res=await fetch("https://api.anthropic.com/v1/messages",{
+  const url=(DB.settings&&DB.settings.aiEndpoint)?DB.settings.aiEndpoint:"https://api.anthropic.com/v1/messages";
+  const res=await fetch(url,{
     method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,system,messages})
   });
   return await res.json();
 }
 function extractText(data){return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n')}
+
+/* =========================================================
+   NÍVEL — trilha e teste de nivelamento (local, sem IA)
+   ========================================================= */
+function deckCardFor(l,item){return l.vocab.find(c=>normWord(splitJp(c.front).base)===normWord(item.f))}
+function levelItemStatus(l,item){const c=deckCardFor(l,item);if(!c)return 'nova';return cardMastered(c)?'sei':'aprendendo'}
+function levelProgress(l,lv){const m=lv.core.filter(it=>levelItemStatus(l,it)==='sei').length;return {mastered:m,total:lv.core.length,pct:Math.round(m/(lv.core.length||1)*100)}}
+function dispItem(item){return langKey(curLang())==='ja'?jpRender(item.f,item.r):esc(item.f)}
+
+function openLevel(id){DB.currentLangId=id;save();refreshLangSwitch();go('level')}
+
+function renderLevel(){
+  const l=curLang();const curr=curCurriculum();
+  const el=document.getElementById('view-level');
+  if(!curr){
+    el.innerHTML=`<div class="section-h"><div><div class="eyebrow">${l.flag} ${esc(l.name)}</div><h2>Nível</h2></div>
+      <button class="btn ghost sm" onclick="go('home')">‹ Voltar</button></div>
+      <div class="card pad empty"><div class="big">🏷️</div><h3 style="color:var(--petrol)">Sem trilha de níveis</h3>
+      <p class="muted" style="margin:8px 0 0">O sistema de níveis está disponível para Inglês, Espanhol, Japonês e Coreano. Defina o código ISO do idioma em Gerenciar para habilitar.</p></div>`;
+    return;
+  }
+  if(!l.level){
+    el.innerHTML=`<div class="section-h"><div><div class="eyebrow">${l.flag} ${esc(l.name)} • ${curr.framework}</div><h2>Descubra seu nível</h2></div>
+      <button class="btn ghost sm" onclick="go('home')">‹ Voltar</button></div>
+      <div class="card pad empty"><div class="big">🎯</div>
+        <h3 style="color:var(--petrol)">Teste de nivelamento</h3>
+        <p class="muted" style="margin:8px 0 16px">Um teste rápido (${curr.levels.length*2} questões) pra te posicionar de ${curr.levels[0].label} a ${curr.levels[curr.levels.length-1].label}. Roda offline, sem IA.</p>
+        <button class="btn gold" onclick="startPlacement()">Começar teste</button></div>`;
+    return;
+  }
+  const idx=curr.levels.findIndex(x=>x.id===l.level);
+  const lv=curr.levels[idx];const next=curr.levels[idx+1];
+  const pr=levelProgress(l,lv);
+  el.innerHTML=`
+    <div class="section-h"><div><div class="eyebrow">${l.flag} ${esc(l.name)} • ${curr.framework}</div><h2>Seu nível: ${lv.label}</h2></div>
+      <button class="btn ghost sm" onclick="go('home')">‹ Voltar</button></div>
+    <div class="card pad" style="margin-bottom:14px">
+      <p class="muted" style="margin-bottom:12px">${esc(lv.desc)}</p>
+      <div style="display:flex;justify-content:space-between;font-size:.82rem;font-weight:600;margin-bottom:6px">
+        <span>Domínio do nível ${lv.label}</span><span>${pr.mastered}/${pr.total}</span></div>
+      <div style="height:10px;background:#e7e2d6;border-radius:99px;overflow:hidden;margin-bottom:10px">
+        <div style="height:100%;width:${pr.pct}%;background:linear-gradient(90deg,var(--gold),var(--gold-soft));transition:.4s"></div></div>
+      <p class="muted" style="font-size:.84rem">${next?(pr.pct>=80?`Você está pronto para ${next.label}! 🎉`:`Domine os itens-chave para avançar ao ${next.label}.`):'Você está no nível máximo. 🏆'}</p>
+    </div>
+
+    <div class="card pad" style="margin-bottom:14px">
+      <div class="eyebrow">Gramática-chave</div>
+      <p style="margin:6px 0 14px">${lv.grammar.map(g=>`<span class="badge" style="margin:2px 4px 2px 0">${esc(g)}</span>`).join('')}</p>
+      <div class="eyebrow">Vocabulário essencial</div>
+      <div style="margin-top:8px">
+        ${lv.core.map(it=>{const s=levelItemStatus(l,it);const chip=s==='sei'?'<span class="badge" style="background:#e7f4ed;color:#1c5a40">domino</span>':s==='aprendendo'?'<span class="badge" style="background:#fbf0d8;color:#8a6a16">estudando</span>':'<span class="badge" style="background:#fbeae5;color:#8a3a25">nova</span>';
+          return `<div class="row-item"><div class="grow"><div class="t">${dispItem(it)}</div><div class="d">${esc(it.b)}</div></div>${chip}</div>`}).join('')}
+      </div>
+      <button class="btn gold block" style="margin-top:12px" onclick="addLevelToDeck('${lv.id}')">+ Adicionar itens deste nível ao baralho</button>
+    </div>
+
+    ${next?`<div class="card pad" style="margin-bottom:14px">
+      <div class="eyebrow">Próximo nível</div>
+      <h3 style="font-size:1.15rem;margin:4px 0 6px">${next.label}</h3>
+      <p class="muted" style="font-size:.86rem">${esc(next.desc)}</p>
+    </div>`:''}
+    <button class="btn ghost block" onclick="if(confirm('Refazer o teste de nivelamento?')){curLang().level=null;save();renderLevel()}">Refazer teste de nivelamento</button>`;
+}
+
+function addLevelToDeck(levelId){
+  const l=curLang();const curr=curCurriculum();const lv=levelById(curr,levelId);
+  let n=0;
+  lv.core.forEach(it=>{if(!deckCardFor(l,it)){l.vocab.push(vcard(it.f,it.b,'',it.r||''));n++}});
+  save();renderLevel();refreshLangSwitch();
+  toast(n?`${n} itens adicionados ao baralho`:'Todos já estão no baralho');
+}
+
+/* ---- teste de nivelamento ---- */
+function startPlacement(){
+  const curr=curCurriculum();if(!curr)return;
+  const allBacks=[];curr.levels.forEach(lv=>lv.core.forEach(it=>allBacks.push(it.b)));
+  const qs=[];
+  curr.levels.forEach(lv=>{
+    [...lv.core].sort(()=>Math.random()-0.5).slice(0,2).forEach(it=>{
+      const opts=[it.b];let g=0;
+      while(opts.length<4&&g<80){g++;const cand=allBacks[Math.floor(Math.random()*allBacks.length)];if(!opts.includes(cand))opts.push(cand)}
+      opts.sort(()=>Math.random()-0.5);
+      qs.push({levelId:lv.id,word:it,options:opts,answer:opts.indexOf(it.b)});
+    });
+  });
+  session.place={qs,i:0,perLevel:{}};
+  renderPlacement();
+}
+function renderPlacement(){
+  const p=session.place;const el=document.getElementById('view-level');
+  if(p.i>=p.qs.length){finishPlacement();return}
+  const q=p.qs[p.i];const pct=Math.round(p.i/p.qs.length*100);
+  el.innerHTML=`
+    <div class="section-h"><div><div class="eyebrow">Teste de nivelamento</div><h2 style="font-size:1.3rem">Questão ${p.i+1} de ${p.qs.length}</h2></div></div>
+    <div style="height:6px;background:#e7e2d6;border-radius:99px;margin-bottom:18px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--gold)"></div></div>
+    <div class="card pad">
+      <p class="muted" style="font-size:.84rem">O que significa:</p>
+      <h3 style="font-size:1.6rem;margin:6px 0 16px">${langKey(curLang())==='ja'?`${esc(q.word.f)}${q.word.r?` <span class="muted" style="font-size:.6em">(${esc(q.word.r)})</span>`:''}`:esc(q.word.f)}</h3>
+      ${q.options.map((o,i)=>`<button class="opt" onclick="placeAnswer(${i})">${esc(o)}</button>`).join('')}
+      <button class="btn ghost block sm" style="margin-top:6px" onclick="placeAnswer(-1)">Não sei</button>
+    </div>`;
+}
+function placeAnswer(idx){
+  const p=session.place;const q=p.qs[p.i];
+  if(!p.perLevel[q.levelId])p.perLevel[q.levelId]={c:0,t:0};
+  p.perLevel[q.levelId].t++;
+  if(idx===q.answer)p.perLevel[q.levelId].c++;
+  p.i++;
+  renderPlacement();
+}
+function finishPlacement(){
+  const curr=curCurriculum();const p=session.place;const l=curLang();
+  let assigned=curr.levels[0].id;
+  for(const lv of curr.levels){
+    const s=p.perLevel[lv.id]||{c:0,t:1};
+    if((s.c/s.t)>=0.6)assigned=lv.id;else break;
+  }
+  l.level=assigned;save();refreshLangSwitch();
+  const lv=levelById(curr,assigned);
+  const el=document.getElementById('view-level');
+  el.innerHTML=`<div class="card pad empty" style="margin-top:20px">
+    <div class="big">🎯</div>
+    <div class="eyebrow">Seu nível em ${esc(l.name)}</div>
+    <div style="font-family:'DM Serif Display',serif;font-size:3rem;color:var(--petrol);line-height:1;margin:6px 0">${lv.label}</div>
+    <p class="muted" style="margin:8px 0 18px">${esc(lv.desc)}</p>
+    <button class="btn gold block" onclick="renderLevel()">Ver minha trilha</button>
+    <button class="btn ghost block" style="margin-top:8px" onclick="go('cards')">Estudar agora</button>
+  </div>`;
+}
 
 /* =========================================================
    Helpers de UI
